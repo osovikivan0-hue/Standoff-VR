@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sora 3 — локальная генерация видео</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        h1 { color: #58a6ff; margin-bottom: 16px; font-size: 1.6rem; }
+        .panel {
+            width: 100%;
+            max-width: 700px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .credits {
+            font-size: 1.1rem;
+            padding: 8px 16px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 16px;
+            display: inline-block;
+        }
+        .credits span { color: #3fb950; font-weight: 700; }
+        .timer { font-size: 0.8rem; color: #8b949e; margin-top: 6px; }
+        textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+            background: #0d1117;
+            color: #e6edf3;
+            font-size: 0.9rem;
+            resize: vertical;
+            margin-bottom: 10px;
+        }
+        textarea:focus { border-color: #58a6ff; outline: none; }
+        button {
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: none;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+        }
+        #genBtn { background: #238636; color: white; }
+        #genBtn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+        #resetBtn {
+            background: #21262d;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            margin-top: 8px;
+            width: auto;
+            padding: 8px 16px;
+            font-size: 0.85rem;
+        }
+        .status-msg {
+            margin-top: 12px;
+            font-size: 0.9rem;
+            color: #d29922;
+            text-align: center;
+            min-height: 20px;
+        }
+        .video-result {
+            margin-top: 16px;
+            width: 100%;
+            max-width: 700px;
+            display: none;
+        }
+        .video-result video {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid #30363d;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🎬 Sora 3</h1>
+
+    <div class="panel">
+        <div class="credits">Кредиты: <span id="creditCount">20</span></div>
+        <div class="timer" id="timerText">Следующее начисление через 2:00</div>
+    </div>
+
+    <div class="panel">
+        <label style="font-size:0.85rem;color:#8b949e;display:block;margin-bottom:6px;">📝 Описание видео</label>
+        <textarea id="promptInput" placeholder="Кот играет с клубком на солнце, кинематографично..."></textarea>
+        <button id="genBtn" disabled>Сгенерировать видео (20 кредитов)</button>
+        <button id="resetBtn">Сбросить прогресс</button>
+        <div class="status-msg" id="statusMsg"></div>
+    </div>
+
+    <div class="video-result" id="videoResult">
+        <video id="resultVideo" controls></video>
+    </div>
+
+    <script>
+        // ===== КЛЮЧ AGNES AI (локально) =====
+        const AGNES_API_KEY = 'sk-JIE8iuUvkH9nmU5rtCLMPhqz39CLcXUs7oUKGfbjzNbPtzWY';
+        const AGNES_BASE = 'https://apihub.agnes-ai.com';
+        const MODEL_NAME = 'agnes-video-2.5-flash';
+
+        // ===== НАСТРОЙКИ ЭКОНОМИКИ =====
+        const CREDITS_PER_TICK = 20;
+        const TICK_INTERVAL_MS = 2 * 60 * 1000;
+        const MAX_CREDITS = 100;
+        const VIDEO_COST = 20;
+
+        // ===== СОСТОЯНИЕ =====
+        let credits = parseInt(localStorage.getItem('sora3_credits') || '20');
+        let lastTick = parseInt(localStorage.getItem('sora3_lastTick') || Date.now().toString());
+        let isGenerating = false;
+        let pollTimer = null;
+
+        const creditEl = document.getElementById('creditCount');
+        const timerEl = document.getElementById('timerText');
+        const genBtn = document.getElementById('genBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const statusMsg = document.getElementById('statusMsg');
+        const promptInput = document.getElementById('promptInput');
+        const videoResult = document.getElementById('videoResult');
+        const resultVideo = document.getElementById('resultVideo');
+
+        function save() {
+            localStorage.setItem('sora3_credits', credits);
+            localStorage.setItem('sora3_lastTick', lastTick);
+        }
+
+        function updateUI() {
+            creditEl.textContent = credits;
+            genBtn.disabled = credits < VIDEO_COST || isGenerating;
+            genBtn.textContent = isGenerating
+                ? 'Генерация идёт...'
+                : `Сгенерировать видео (${VIDEO_COST} кредитов)`;
+        }
+
+        function tick() {
+            const now = Date.now();
+            const elapsed = now - lastTick;
+            if (elapsed >= TICK_INTERVAL_MS) {
+                const ticksPassed = Math.floor(elapsed / TICK_INTERVAL_MS);
+                const earned = ticksPassed * CREDITS_PER_TICK;
+                credits = Math.min(MAX_CREDITS, credits + earned);
+                lastTick = now - (elapsed % TICK_INTERVAL_MS);
+                save();
+                updateUI();
+                statusMsg.textContent = `+${earned} кредитов начислено!`;
+                setTimeout(() => statusMsg.textContent = '', 3000);
+            }
+            const remaining = TICK_INTERVAL_MS - (Date.now() - lastTick);
+            const sec = Math.max(0, Math.floor(remaining / 1000));
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            timerEl.textContent = `Следующее начисление через ${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function stopPolling() {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        }
+
+        async function generateVideo() {
+            const prompt = promptInput.value.trim();
+            if (!prompt) { alert('Введите описание видео.'); return; }
+
+            // Конфликт: генерация уже идёт
+            if (isGenerating) {
+                if (credits >= VIDEO_COST * 2) {
+                    const ok = confirm(
+                        'У вас уже генерируется видео.\n\n' +
+                        'Если запустить новое, текущая генерация будет сброшена.\n\n' +
+                        'Продолжить?'
+                    );
+                    if (!ok) return;
+                    stopPolling();
+                    isGenerating = false;
+                    statusMsg.textContent = 'Предыдущая генерация отменена.';
+                } else {
+                    alert('Генерация уже идёт. Дождитесь окончания.');
+                    return;
+                }
+            }
+
+            if (credits < VIDEO_COST) {
+                alert('Недостаточно кредитов. Подождите начисления.');
+                return;
+            }
+
+            credits -= VIDEO_COST;
+            save();
+            isGenerating = true;
+            updateUI();
+            videoResult.style.display = 'none';
+            statusMsg.textContent = 'Создание задачи...';
+
+            try {
+                const createRes = await fetch(`${AGNES_BASE}/v1/videos`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${AGNES_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: MODEL_NAME,
+                        prompt: prompt,
+                        seconds: '5',
+                        mode: 'text',
+                        size: '720P',
+                        aspect_ratio: '16:9'
+                    })
+                });
+
+                if (!createRes.ok) {
+                    const errText = await createRes.text();
+                    throw new Error(`HTTP ${createRes.status}: ${errText.slice(0, 200)}`);
+                }
+
+                const createData = await createRes.json();
+                console.log('Создание:', createData);
+                const videoId = createData.video_id || createData.id || (createData.data && createData.data.video_id);
+                if (!videoId) throw new Error('Не получен video_id');
+
+                statusMsg.textContent = `Задача создана (ID: ${videoId}). Генерация...`;
+
+                let attempts = 0;
+                const maxAttempts = 80;
+
+                pollTimer = setInterval(async () => {
+                    attempts++;
+                    if (attempts > maxAttempts) {
+                        stopPolling();
+                        isGenerating = false;
+                        updateUI();
+                        statusMsg.textContent = 'Превышено время ожидания.';
+                        return;
+                    }
+                    try {
+                        const url = `${AGNES_BASE}/agnesapi?video_id=${encodeURIComponent(videoId)}&model_name=${MODEL_NAME}`;
+                        const statusRes = await fetch(url, {
+                            headers: { 'Authorization': `Bearer ${AGNES_API_KEY}` }
+                        });
+                        const statusData = await statusRes.json();
+                        console.log('Статус:', statusData);
+
+                        const st = statusData.status || (statusData.data && statusData.data.status);
+
+                        if (st === 'completed' || st === 'success' || st === 'succeeded') {
+                            stopPolling();
+                            const videoUrl = statusData.url
+                                || statusData.video_url
+                                || (statusData.data && (statusData.data.url || statusData.data.video_url));
+                            if (videoUrl) {
+                                resultVideo.src = videoUrl;
+                                videoResult.style.display = 'block';
+                                statusMsg.textContent = '✅ Видео готово!';
+                            } else {
+                                statusMsg.textContent = 'Видео готово, но URL не найден в ответе.';
+                                console.warn('Полный ответ:', statusData);
+                            }
+                            isGenerating = false;
+                            updateUI();
+                        } else if (st === 'failed' || st === 'error') {
+                            stopPolling();
+                            isGenerating = false;
+                            updateUI();
+                            statusMsg.textContent = `❌ Ошибка генерации: ${statusData.message || statusData.error || 'неизвестно'}`;
+                        } else {
+                            statusMsg.textContent = `Генерация... (${attempts}/${maxAttempts}) статус: ${st || 'в процессе'}`;
+                        }
+                    } catch (e) {
+                        console.warn('Ошибка опроса:', e);
+                    }
+                }, 1500);
+
+            } catch (err) {
+                isGenerating = false;
+                updateUI();
+                statusMsg.textContent = `Ошибка: ${err.message}`;
+                console.error(err);
+            }
+        }
+
+        genBtn.addEventListener('click', generateVideo);
+        resetBtn.addEventListener('click', () => {
+            if (confirm('Сбросить кредиты?')) {
+                stopPolling();
+                credits = 20;
+                lastTick = Date.now();
+                isGenerating = false;
+                save();
+                updateUI();
+                videoResult.style.display = 'none';
+                statusMsg.textContent = 'Прогресс сброшен.';
+            }
+        });
+
+        updateUI();
+        setInterval(tick, 1000);
+        tick();
+    </script>
+
+</body>
+</html>
