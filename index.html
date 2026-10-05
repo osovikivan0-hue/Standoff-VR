@@ -1,318 +1,325 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sora 3 — локальная генерация видео</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            background: #0d1117;
-            color: #e6edf3;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-        }
-        h1 { color: #58a6ff; margin-bottom: 16px; font-size: 1.6rem; }
-        .panel {
-            width: 100%;
-            max-width: 700px;
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-        .credits {
-            font-size: 1.1rem;
-            padding: 8px 16px;
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 16px;
-            display: inline-block;
-        }
-        .credits span { color: #3fb950; font-weight: 700; }
-        .timer { font-size: 0.8rem; color: #8b949e; margin-top: 6px; }
-        textarea {
-            width: 100%;
-            min-height: 80px;
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid #30363d;
-            background: #0d1117;
-            color: #e6edf3;
-            font-size: 0.9rem;
-            resize: vertical;
-            margin-bottom: 10px;
-        }
-        textarea:focus { border-color: #58a6ff; outline: none; }
-        button {
-            padding: 12px 24px;
-            border-radius: 10px;
-            border: none;
-            font-size: 1rem;
-            cursor: pointer;
-            font-weight: 600;
-            width: 100%;
-        }
-        #genBtn { background: #238636; color: white; }
-        #genBtn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
-        #resetBtn {
-            background: #21262d;
-            color: #e6edf3;
-            border: 1px solid #30363d;
-            margin-top: 8px;
-            width: auto;
-            padding: 8px 16px;
-            font-size: 0.85rem;
-        }
-        .status-msg {
-            margin-top: 12px;
-            font-size: 0.9rem;
-            color: #d29922;
-            text-align: center;
-            min-height: 20px;
-        }
-        .video-result {
-            margin-top: 16px;
-            width: 100%;
-            max-width: 700px;
-            display: none;
-        }
-        .video-result video {
-            width: 100%;
-            border-radius: 12px;
-            border: 1px solid #30363d;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Мессенджер (1 файл)</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        height: 100vh; display: flex; align-items: center; justify-content: center;
+        padding: 10px;
+    }
+    .card {
+        background: white; border-radius: 20px; width: 100%; max-width: 500px;
+        height: 90vh; max-height: 700px; display: flex; flex-direction: column;
+        overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .header {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; padding: 15px 20px; display: flex;
+        justify-content: space-between; align-items: center;
+    }
+    .header h1 { font-size: 16px; }
+    .header button {
+        background: rgba(255,255,255,0.2); border: none; color: white;
+        padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 12px;
+    }
+    .messages {
+        flex: 1; overflow-y: auto; padding: 15px;
+        background: #fafafa; display: flex; flex-direction: column; gap: 8px;
+    }
+    .msg {
+        max-width: 75%; padding: 10px 14px; border-radius: 15px;
+        word-wrap: break-word; font-size: 14px;
+    }
+    .msg.own {
+        align-self: flex-end; color: white;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        border-bottom-right-radius: 5px;
+    }
+    .msg.other {
+        align-self: flex-start; background: white; color: #333;
+        border: 1px solid #e0e0e0; border-bottom-left-radius: 5px;
+    }
+    .msg .from { font-size: 11px; font-weight: 600; opacity: 0.7; margin-bottom: 3px; }
+    .msg .time { font-size: 10px; opacity: 0.6; margin-top: 4px; text-align: right; }
+    .msg.system {
+        align-self: center; background: #e0e0e0; color: #666;
+        font-size: 12px; padding: 5px 12px; border-radius: 10px;
+    }
+    .input-area {
+        padding: 12px; background: white; border-top: 1px solid #e0e0e0;
+        display: flex; gap: 8px;
+    }
+    .input-area input {
+        flex: 1; padding: 12px 15px; border: 2px solid #e0e0e0;
+        border-radius: 25px; font-size: 14px; outline: none;
+    }
+    .input-area input:focus { border-color: #667eea; }
+    .input-area button {
+        padding: 12px 20px; border: none; border-radius: 25px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; font-weight: 600; cursor: pointer;
+    }
+    /* Экран входа */
+    #login {
+        padding: 40px 25px; text-align: center; display: flex;
+        flex-direction: column; justify-content: center; height: 100%;
+    }
+    #login h1 { color: #333; margin-bottom: 10px; }
+    #login p { color: #666; margin-bottom: 20px; font-size: 14px; }
+    #login input {
+        width: 100%; padding: 14px; border: 2px solid #e0e0e0;
+        border-radius: 12px; font-size: 16px; margin-bottom: 12px;
+        outline: none; text-align: center;
+    }
+    #login input:focus { border-color: #667eea; }
+    #login button {
+        width: 100%; padding: 14px; border: none; border-radius: 12px;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    .hint { color: #999; font-size: 12px; margin-top: 15px; }
+
+    /* Уведомления */
+    .notif {
+        position: fixed; top: 20px; right: 20px;
+        background: white; padding: 15px 20px; border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        border-left: 4px solid #667eea; min-width: 250px;
+        animation: slideIn 0.3s ease; z-index: 9999;
+    }
+    @keyframes slideIn {
+        from { transform: translateX(400px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+    .notif .nf { font-weight: 600; color: #667eea; font-size: 13px; }
+    .notif .nt { font-size: 14px; color: #333; margin-top: 3px; }
+</style>
 </head>
 <body>
 
-    <h1>🎬 Sora 3</h1>
-
-    <div class="panel">
-        <div class="credits">Кредиты: <span id="creditCount">20</span></div>
-        <div class="timer" id="timerText">Следующее начисление через 2:00</div>
+<div class="card">
+    <!-- Экран входа -->
+    <div id="login">
+        <h1>💬 Мессенджер</h1>
+        <p>Введите имя и название комнаты</p>
+        <input type="text" id="nameInput" placeholder="Ваше имя" maxlength="20">
+        <input type="text" id="roomInput" placeholder="Комната (например: 1234)" 
+               value="room1" maxlength="30">
+        <button onclick="connect()">Войти</button>
+        <div class="hint">Устройства в одной комнате увидят друг друга</div>
     </div>
 
-    <div class="panel">
-        <label style="font-size:0.85rem;color:#8b949e;display:block;margin-bottom:6px;">📝 Описание видео</label>
-        <textarea id="promptInput" placeholder="Кот играет с клубком на солнце, кинематографично..."></textarea>
-        <button id="genBtn" disabled>Сгенерировать видео (20 кредитов)</button>
-        <button id="resetBtn">Сбросить прогресс</button>
-        <div class="status-msg" id="statusMsg"></div>
+    <!-- Чат -->
+    <div id="chat" style="display:none; flex-direction:column; height:100%;">
+        <div class="header">
+            <div>
+                <h1 id="roomTitle">Комната</h1>
+                <div style="font-size:12px; opacity:0.8;" id="myName">—</div>
+            </div>
+            <button onclick="enableNotif()">🔔 Уведомления</button>
+        </div>
+        <div class="messages" id="messages"></div>
+        <div class="input-area">
+            <input type="text" id="msgInput" placeholder="Сообщение..." 
+                   onkeypress="if(event.key==='Enter') send()">
+            <button onclick="send()">➤</button>
+        </div>
     </div>
+</div>
 
-    <div class="video-result" id="videoResult">
-        <video id="resultVideo" controls></video>
-    </div>
+<script>
+let client = null;
+let username = '';
+let room = '';
 
-    <script>
-        // ===== КЛЮЧ AGNES AI (локально) =====
-        const AGNES_API_KEY = 'sk-JIE8iuUvkH9nmU5rtCLMPhqz39CLcXUs7oUKGfbjzNbPtzWY';
-        const AGNES_BASE = 'https://apihub.agnes-ai.com';
-        const MODEL_NAME = 'agnes-video-2.5-flash';
+// ============ ПОДКЛЮЧЕНИЕ ============
+function connect() {
+    username = document.getElementById('nameInput').value.trim();
+    room = document.getElementById('roomInput').value.trim();
 
-        // ===== НАСТРОЙКИ ЭКОНОМИКИ =====
-        const CREDITS_PER_TICK = 20;
-        const TICK_INTERVAL_MS = 2 * 60 * 1000;
-        const MAX_CREDITS = 100;
-        const VIDEO_COST = 20;
+    if (!username || !room) {
+        alert('Заполните оба поля');
+        return;
+    }
 
-        // ===== СОСТОЯНИЕ =====
-        let credits = parseInt(localStorage.getItem('sora3_credits') || '20');
-        let lastTick = parseInt(localStorage.getItem('sora3_lastTick') || Date.now().toString());
-        let isGenerating = false;
-        let pollTimer = null;
+    const roomId = 'messenger_' + room.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const topic = 'chat/' + roomId;
 
-        const creditEl = document.getElementById('creditCount');
-        const timerEl = document.getElementById('timerText');
-        const genBtn = document.getElementById('genBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const statusMsg = document.getElementById('statusMsg');
-        const promptInput = document.getElementById('promptInput');
-        const videoResult = document.getElementById('videoResult');
-        const resultVideo = document.getElementById('resultVideo');
+    // Публичный MQTT-брокер (бесплатный, без регистрации)
+    const brokerUrl = 'wss://broker.hivemq.com:8884/mqtt';
 
-        function save() {
-            localStorage.setItem('sora3_credits', credits);
-            localStorage.setItem('sora3_lastTick', lastTick);
-        }
+    addSystem('Подключение...');
 
-        function updateUI() {
-            creditEl.textContent = credits;
-            genBtn.disabled = credits < VIDEO_COST || isGenerating;
-            genBtn.textContent = isGenerating
-                ? 'Генерация идёт...'
-                : `Сгенерировать видео (${VIDEO_COST} кредитов)`;
-        }
+    client = mqtt.connect(brokerUrl, {
+        clientId: 'user_' + Math.random().toString(16).substr(2, 8)
+    });
 
-        function tick() {
-            const now = Date.now();
-            const elapsed = now - lastTick;
-            if (elapsed >= TICK_INTERVAL_MS) {
-                const ticksPassed = Math.floor(elapsed / TICK_INTERVAL_MS);
-                const earned = ticksPassed * CREDITS_PER_TICK;
-                credits = Math.min(MAX_CREDITS, credits + earned);
-                lastTick = now - (elapsed % TICK_INTERVAL_MS);
-                save();
-                updateUI();
-                statusMsg.textContent = `+${earned} кредитов начислено!`;
-                setTimeout(() => statusMsg.textContent = '', 3000);
-            }
-            const remaining = TICK_INTERVAL_MS - (Date.now() - lastTick);
-            const sec = Math.max(0, Math.floor(remaining / 1000));
-            const m = Math.floor(sec / 60);
-            const s = sec % 60;
-            timerEl.textContent = `Следующее начисление через ${m}:${s.toString().padStart(2, '0')}`;
-        }
+    client.on('connect', () => {
+        client.subscribe(topic, (err) => {
+            if (!err) {
+                // Переключаем экран
+                document.getElementById('login').style.display = 'none';
+                document.getElementById('chat').style.display = 'flex';
+                document.getElementById('roomTitle').textContent = '💬 ' + room;
+                document.getElementById('myName').textContent = 'Вы: ' + username;
 
-        function stopPolling() {
-            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-        }
+                addSystem('Вы вошли в комнату "' + room + '"');
 
-        async function generateVideo() {
-            const prompt = promptInput.value.trim();
-            if (!prompt) { alert('Введите описание видео.'); return; }
-
-            // Конфликт: генерация уже идёт
-            if (isGenerating) {
-                if (credits >= VIDEO_COST * 2) {
-                    const ok = confirm(
-                        'У вас уже генерируется видео.\n\n' +
-                        'Если запустить новое, текущая генерация будет сброшена.\n\n' +
-                        'Продолжить?'
-                    );
-                    if (!ok) return;
-                    stopPolling();
-                    isGenerating = false;
-                    statusMsg.textContent = 'Предыдущая генерация отменена.';
-                } else {
-                    alert('Генерация уже идёт. Дождитесь окончания.');
-                    return;
-                }
-            }
-
-            if (credits < VIDEO_COST) {
-                alert('Недостаточно кредитов. Подождите начисления.');
-                return;
-            }
-
-            credits -= VIDEO_COST;
-            save();
-            isGenerating = true;
-            updateUI();
-            videoResult.style.display = 'none';
-            statusMsg.textContent = 'Создание задачи...';
-
-            try {
-                const createRes = await fetch(`${AGNES_BASE}/v1/videos`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${AGNES_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: MODEL_NAME,
-                        prompt: prompt,
-                        seconds: '5',
-                        mode: 'text',
-                        size: '720P',
-                        aspect_ratio: '16:9'
-                    })
+                // Оповещаем других
+                publish({
+                    type: 'join',
+                    from: username,
+                    text: username + ' присоединился'
                 });
-
-                if (!createRes.ok) {
-                    const errText = await createRes.text();
-                    throw new Error(`HTTP ${createRes.status}: ${errText.slice(0, 200)}`);
-                }
-
-                const createData = await createRes.json();
-                console.log('Создание:', createData);
-                const videoId = createData.video_id || createData.id || (createData.data && createData.data.video_id);
-                if (!videoId) throw new Error('Не получен video_id');
-
-                statusMsg.textContent = `Задача создана (ID: ${videoId}). Генерация...`;
-
-                let attempts = 0;
-                const maxAttempts = 80;
-
-                pollTimer = setInterval(async () => {
-                    attempts++;
-                    if (attempts > maxAttempts) {
-                        stopPolling();
-                        isGenerating = false;
-                        updateUI();
-                        statusMsg.textContent = 'Превышено время ожидания.';
-                        return;
-                    }
-                    try {
-                        const url = `${AGNES_BASE}/agnesapi?video_id=${encodeURIComponent(videoId)}&model_name=${MODEL_NAME}`;
-                        const statusRes = await fetch(url, {
-                            headers: { 'Authorization': `Bearer ${AGNES_API_KEY}` }
-                        });
-                        const statusData = await statusRes.json();
-                        console.log('Статус:', statusData);
-
-                        const st = statusData.status || (statusData.data && statusData.data.status);
-
-                        if (st === 'completed' || st === 'success' || st === 'succeeded') {
-                            stopPolling();
-                            const videoUrl = statusData.url
-                                || statusData.video_url
-                                || (statusData.data && (statusData.data.url || statusData.data.video_url));
-                            if (videoUrl) {
-                                resultVideo.src = videoUrl;
-                                videoResult.style.display = 'block';
-                                statusMsg.textContent = '✅ Видео готово!';
-                            } else {
-                                statusMsg.textContent = 'Видео готово, но URL не найден в ответе.';
-                                console.warn('Полный ответ:', statusData);
-                            }
-                            isGenerating = false;
-                            updateUI();
-                        } else if (st === 'failed' || st === 'error') {
-                            stopPolling();
-                            isGenerating = false;
-                            updateUI();
-                            statusMsg.textContent = `❌ Ошибка генерации: ${statusData.message || statusData.error || 'неизвестно'}`;
-                        } else {
-                            statusMsg.textContent = `Генерация... (${attempts}/${maxAttempts}) статус: ${st || 'в процессе'}`;
-                        }
-                    } catch (e) {
-                        console.warn('Ошибка опроса:', e);
-                    }
-                }, 1500);
-
-            } catch (err) {
-                isGenerating = false;
-                updateUI();
-                statusMsg.textContent = `Ошибка: ${err.message}`;
-                console.error(err);
-            }
-        }
-
-        genBtn.addEventListener('click', generateVideo);
-        resetBtn.addEventListener('click', () => {
-            if (confirm('Сбросить кредиты?')) {
-                stopPolling();
-                credits = 20;
-                lastTick = Date.now();
-                isGenerating = false;
-                save();
-                updateUI();
-                videoResult.style.display = 'none';
-                statusMsg.textContent = 'Прогресс сброшен.';
             }
         });
+    });
 
-        updateUI();
-        setInterval(tick, 1000);
-        tick();
-    </script>
+    client.on('message', (topic, payload) => {
+        try {
+            const msg = JSON.parse(payload.toString());
+            handleMessage(msg);
+        } catch(e) {}
+    });
 
+    client.on('error', (err) => {
+        addSystem('Ошибка: ' + err.message);
+    });
+
+    client.on('close', () => {
+        addSystem('Соединение потеряно');
+    });
+}
+
+function publish(data) {
+    if (!client || !client.connected) return;
+    const roomId = 'messenger_' + room.toLowerCase().replace(/[^a-z0-9]/g, '');
+    client.publish('chat/' + roomId, JSON.stringify(data));
+}
+
+// ============ ОБРАБОТКА ============
+function handleMessage(msg) {
+    if (msg.from === username) return; // своё не показываем дважды
+
+    if (msg.type === 'join' || msg.type === 'leave') {
+        addSystem(msg.text);
+        return;
+    }
+
+    if (msg.type === 'message') {
+        renderMessage(msg);
+        showNotification(msg);
+        playSound();
+    }
+}
+
+// ============ ОТПРАВКА ============
+function send() {
+    const input = document.getElementById('msgInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const msg = {
+        type: 'message',
+        from: username,
+        text: text,
+        time: Date.now()
+    };
+
+    publish(msg);
+    renderMessage(msg, true);
+    input.value = '';
+}
+
+// ============ ОТОБРАЖЕНИЕ ============
+function renderMessage(msg, own = false) {
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg ' + (own ? 'own' : 'other');
+    div.innerHTML = `
+        ${!own ? `<div class="from">${esc(msg.from)}</div>` : ''}
+        <div>${esc(msg.text)}</div>
+        <div class="time">${formatTime(msg.time)}</div>
+    `;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+function addSystem(text) {
+    const container = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg system';
+    div.textContent = text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+}
+
+// ============ УВЕДОМЛЕНИЯ ============
+function showNotification(msg) {
+    // Всплывающее
+    const n = document.createElement('div');
+    n.className = 'notif';
+    n.innerHTML = `<div class="nf">${esc(msg.from)}</div>
+                   <div class="nt">${esc(msg.text.substring(0, 60))}</div>`;
+    document.body.appendChild(n);
+    setTimeout(() => n.remove(), 5000);
+
+    // Системное
+    if (Notification.permission === 'granted' && document.hidden) {
+        new Notification(msg.from, { body: msg.text });
+    }
+}
+
+function enableNotif() {
+    if (!('Notification' in window)) return alert('Не поддерживается');
+    Notification.requestPermission().then(p => {
+        alert(p === 'granted' ? '✅ Уведомления включены' : '❌ Отклонено');
+    });
+}
+
+function playSound() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.frequency.value = 800;
+        g.gain.setValueAtTime(0.1, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        o.start(); o.stop(ctx.currentTime + 0.15);
+    } catch(e) {}
+}
+
+// ============ УТИЛИТЫ ============
+function esc(t) {
+    const d = document.createElement('div');
+    d.textContent = t;
+    return d.innerHTML;
+}
+
+function formatTime(ts) {
+    const d = new Date(ts);
+    return d.getHours().toString().padStart(2,'0') + ':' +
+           d.getMinutes().toString().padStart(2,'0');
+}
+
+// Enter на экране входа
+document.getElementById('nameInput').addEventListener('keypress', e => {
+    if (e.key === 'Enter') document.getElementById('roomInput').focus();
+});
+document.getElementById('roomInput').addEventListener('keypress', e => {
+    if (e.key === 'Enter') connect();
+});
+
+if ('Notification' in window && Notification.permission === 'default') {
+    setTimeout(() => Notification.requestPermission(), 2000);
+}
+</script>
 </body>
 </html>
